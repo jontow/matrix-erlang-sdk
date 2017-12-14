@@ -15,7 +15,7 @@
 %% @doc A small experimental Matrix client.
 
 -module(matrix).
--export([init/0, login/3, joinRoom/3, sendTextMessage/4, listen/3, helloMatrix/4]).
+-export([init/0, login/3, joinRoom/3, partRoom/3, sendTextMessage/4, listen/3, helloMatrix/4]).
 
 -ifdef (TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -23,14 +23,14 @@
 
 -define(API_URL, "/_matrix/client/api/v1/").
 
--define(DEBUG, false).
+-define(DEBUG, true).
 
 %Initiate, login, join a room, send a "Hello from Erlang" message.
 %Example: matrix:helloMatrix("https:myhomeserv.er:8008", "myusername", "mypassword", "#publicroom:myhomeserv.er").
 helloMatrix(Homeserver, Username, Password, RoomAlias) ->
 	init(),
-	AccessToken = login(Username, Password, Homeserver),
-	RoomID = joinRoom(RoomAlias, AccessToken, Homeserver),
+	{ok, AccessToken} = login(Username, Password, Homeserver),
+	{ok, RoomID} = joinRoom(RoomAlias, AccessToken, Homeserver),
 	sendTextMessage("Hello from Erlang!", RoomID, AccessToken, Homeserver),
 	"Success! Look at the chat to see the message.".
 
@@ -54,11 +54,23 @@ login(Username, Password, Server) ->
 %Join a room by its' alias or ID. Make sure you have received an access token from login/3.
 %Returns the room ID.
 joinRoom(RoomIdOrAlias, AccessToken, Server) ->
-	Resource = string:concat("join/", RoomIdOrAlias),
+	% This seems not to respond with the 'room_id'?
+	%Resource = unicode:characters_to_list(["rooms/", uri_encode(RoomIdOrAlias), "/join"]),
+	% This does, though the docs claim it is an alias to 'rooms/XYZ/join':
+	Resource = unicode:characters_to_list(["join/", uri_encode(RoomIdOrAlias)]),
 	Body = jiffy:encode(#{}),
 	JoinResp = api_post(Resource, Body, AccessToken, Server),
 	#{<<"room_id">> := RoomId} = JoinResp,
 	{ok, erlang:binary_to_list(RoomId)}.
+
+%Leave a room by its' alias or ID. Make sure you have received an access token from login/3.
+%Returns the room ID.
+partRoom(RoomIdOrAlias, AccessToken, Server) ->
+	Resource = unicode:characters_to_list(["rooms/", uri_encode(RoomIdOrAlias), "/leave"]),
+	Body = jiffy:encode(#{}),
+	PartResp = api_post(Resource, Body, AccessToken, Server),
+	#{} = PartResp,
+	{ok, RoomIdOrAlias}.
 
 %Send a TEXT message to the given room.
 sendTextMessage(Message, RoomId, AccessToken, Server) ->
@@ -97,7 +109,7 @@ listen(RoomId, AccessToken, _, Server) ->
 %Returns the response body as JSON, will probably crash if anything goes wrong.
 api_post(Resource, Body, Server) ->
 	Method = post,
-	URL = escape_url(string:concat(Server, string:concat(?API_URL, Resource))),
+	URL = string:concat(Server, string:concat(?API_URL, Resource)),
 	log("POST_URL", URL),
 	log("POST_REQUEST", Body),
 	Header = [],
@@ -114,7 +126,7 @@ api_post(Resource, Body, Server) ->
 %TODO: Make it easier to insert qs.
 api_get(Resource, Server) ->
 	Method = get,
-	URL = escape_url(string:concat(Server, string:concat(?API_URL, Resource))),
+	URL = string:concat(Server, string:concat(?API_URL, Resource)),
 	log("GET_URL", URL),
 	Header = [],
 	HttpOptions = [],
@@ -142,8 +154,8 @@ log(Tag, Message) ->
 		io:fwrite(": "),
 		io:fwrite(Message),
 		io:fwrite("\n");
-	   true ->
-		   ok
+	true ->
+		ok
 	end.
 
 %Pretty prints......
@@ -159,10 +171,9 @@ print(Message) ->
 	io:fwrite(Message),
 	io:fwrite("\n").
 
-%%TODO: Really, really should not do it this way. Temporary fix. Escape the whole URL properly instead.
-escape_url(URL) ->
-	log("ESCAPEURL", URL),
-	re:replace(URL,"#","%23",[{return,list}]).
+uri_encode(URL) ->
+	log("URIENCODE", URL),
+	edoc_lib:escape_uri(URL).
 
 
 %%-------------------------------------------
