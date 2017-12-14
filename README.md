@@ -20,12 +20,17 @@ matrix:init().
 
 Log in with password:
 ```erlang
-AccessToken = matrix:login("username", "password", Homeserver).
+{ok, AccessToken} = matrix:login("username", "password", Homeserver).
 ```
 
 Join room:
 ```erlang
-RoomID = matrix:joinRoom("#room:domain.asd", AccessToken, Homeserver).
+{ok, RoomID} = matrix:joinRoom("#room:domain.asd", AccessToken, Homeserver).
+```
+
+Leave room:
+```erlang
+matrix:partRoom("#room:domain.asd", AccessToken, Homeserver).
 ```
 
 Send a message:
